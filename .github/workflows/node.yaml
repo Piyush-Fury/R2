@@ -98,26 +98,26 @@ jobs:
       #     workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
       #     service_account: github-oidc-sa@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
 
-      - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_CREDENTIALS }}          
+      # - name: Authenticate to GCP
+      #   uses: google-github-actions/auth@v2
+      #   with:
+      #     credentials_json: ${{ secrets.GCP_CREDENTIALS }}          
 
-      - name: List GCS Buckets (Verify Auth)
-        run: |
-          echo '${{ secrets.GCP_CREDENTIALS }}' > /tmp/gcp-key.json
-          gcloud auth activate-service-account --key-file=/tmp/gcp-key.json
-          gcloud auth list
-          echo "GOOGLE_APPLICATION_CREDENTIALS=$GOOGLE_APPLICATION_CREDENTIALS"
+      # - name: List GCS Buckets (Verify Auth)
+      #   run: |
+      #     echo '${{ secrets.GCP_CREDENTIALS }}' > /tmp/gcp-key.json
+      #     gcloud auth activate-service-account --key-file=/tmp/gcp-key.json
+      #     gcloud auth list
+      #     echo "GOOGLE_APPLICATION_CREDENTIALS=$GOOGLE_APPLICATION_CREDENTIALS"
 
-      - name: Configure Docker for GCP
-        run: |
-          gcloud auth configure-docker --quiet $ARTIFACT_REGISTRY
+      # - name: Configure Docker for GCP
+      #   run: |
+      #     gcloud auth configure-docker --quiet $ARTIFACT_REGISTRY
 
-      - name: Tag and Push to GCP Artifact Registry
-        run: |
-          docker tag node:${{ needs.check-node-release.outputs.latest_tag }} $ARTIFACT_REGISTRY/${{ secrets.GCP_PROJECT_ID }}/node:${{ needs.check-node-release.outputs.latest_tag }}
-          docker push $ARTIFACT_REGISTRY/${{ secrets.GCP_PROJECT_ID }}/node:${{ needs.check-node-release.outputs.latest_tag }}
+      # - name: Tag and Push to GCP Artifact Registry
+      #   run: |
+      #     docker tag node:${{ needs.check-node-release.outputs.latest_tag }} $ARTIFACT_REGISTRY/${{ secrets.GCP_PROJECT_ID }}/node:${{ needs.check-node-release.outputs.latest_tag }}
+      #     docker push 348286729043.dkr.ecr.eu-central-1.amazonaws.com/nodejs-testing:${{ needs.check-node-release.outputs.latest_tag }}
 
       - name: Update stored tag in Gist
         uses: actions/github-script@v7
