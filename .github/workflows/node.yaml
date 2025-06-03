@@ -89,7 +89,7 @@ jobs:
 
       - name: Tag and Push to AWS ECR
         run: |
-          docker tag node:${{ needs.check-node-release.outputs.latest_tag }} ${{ steps.login-ecr.outputs.registry }}/node:${{ needs.check-node-release.outputs.latest_tag }}
+          docker tag node:${{ needs.check-node-release.outputs.latest_tag }} ${{ steps.login-ecr.outputs.registry }}/nodejs-testing:${{ needs.check-node-release.outputs.latest_tag }}
           docker push ${{ steps.login-ecr.outputs.registry }}/nodejs-testing:${{ needs.check-node-release.outputs.latest_tag }}
 
       # - name: Authenticate to Google Cloud
