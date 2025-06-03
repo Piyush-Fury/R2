@@ -1,0 +1,153 @@
+name: Node LTS Alpine Image Sync
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # Daily at midnight UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  actions: read
+
+jobs:
+  check-node-release:
+    name: Check for New Node.js LTS Alpine Image
+    runs-on: ubuntu-latest
+    outputs:
+      is_manual: ${{ steps.decide.outputs.is_manual }} 
+      push: ${{ steps.decide.outputs.push }}
+      notify: ${{ steps.decide.outputs.notify }}
+      latest_tag: ${{ steps.get_latest.outputs.tag }}
+      prev_tag: ${{ steps.get_prev.outputs.prev }}
+
+    steps:
+      - name: Get latest node:lts-alpine tag
+        id: get_latest
+        run: |
+          latest_tag=$(curl -s https://registry.hub.docker.com/v2/repositories/library/node/tags?page_size=100 | jq -r '.results[] | select(.name | startswith("lts-alpine")) | .name' | sort -V | tail -n1)
+          echo "tag=$latest_tag" >> $GITHUB_OUTPUT
+
+      - name: Read stored tag from Gist
+        id: get_prev
+        uses: actions/github-script@v7
+        env:
+          GIST_ID: ${{ secrets.NODE_RELEASE_GIST_ID }} #https://gist.github.com/Piyush-Fury/e73f06d50247704d5e978114a2d571c4
+        with:
+          github-token: ${{ secrets.NODE_RELEASE_GIST_TOKEN }}
+          script: |
+            const gist = await github.rest.gists.get({ gist_id: process.env.GIST_ID });
+            const prev = gist.data.files['previous_node_lts_alpine.txt'].content.trim();
+            core.setOutput('prev', prev);
+
+      - name: Decide what to do
+        id: decide
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "is_manual=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_manual=false" >> $GITHUB_OUTPUT
+          fi
+
+          if [[ "${{ steps.get_latest.outputs.tag }}" != "${{ steps.get_prev.outputs.prev }}" ]]; then
+            echo "push=true" >> $GITHUB_OUTPUT
+            echo "notify=true" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "push=false" >> $GITHUB_OUTPUT
+            echo "notify=true" >> $GITHUB_OUTPUT
+          else
+            echo "push=false" >> $GITHUB_OUTPUT
+            echo "notify=false" >> $GITHUB_OUTPUT
+          fi
+
+  pull-and-push:
+    name: Pull and Push Node.js Image
+    needs: check-node-release
+    if: needs.check-node-release.outputs.push == 'true'
+    runs-on: ubuntu-latest
+
+    env:
+      ARTIFACT_REGISTRY: us-east1-docker.pkg.dev
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE }}
+          role-session-name: github-node-push
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+        with:
+          mask-password: true
+
+      - name: Pull Node.js image
+        run: |
+          docker pull node:${{ needs.check-node-release.outputs.latest_tag }}
+
+      - name: Tag and Push to AWS ECR
+        run: |
+          docker tag node:${{ needs.check-node-release.outputs.latest_tag }} ${{ steps.login-ecr.outputs.registry }}/node:${{ needs.check-node-release.outputs.latest_tag }}
+          docker push ${{ steps.login-ecr.outputs.registry }}/node:${{ needs.check-node-release.outputs.latest_tag }}
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: github-oidc-sa@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+
+      - name: Configure Docker for GCP
+        run: |
+          gcloud auth configure-docker --quiet $ARTIFACT_REGISTRY
+
+      - name: Tag and Push to GCP Artifact Registry
+        run: |
+          docker tag node:${{ needs.check-node-release.outputs.latest_tag }} $ARTIFACT_REGISTRY/${{ secrets.GCP_PROJECT_ID }}/node:${{ needs.check-node-release.outputs.latest_tag }}
+          docker push $ARTIFACT_REGISTRY/${{ secrets.GCP_PROJECT_ID }}/node:${{ needs.check-node-release.outputs.latest_tag }}
+
+      - name: Update stored tag in Gist
+        uses: actions/github-script@v7
+        env:
+          GIST_ID: ${{ secrets.NODE_RELEASE_GIST_ID }}
+        with:
+          github-token: ${{ secrets.NODE_RELEASE_GIST_TOKEN }}
+          script: |
+            await github.rest.gists.update({
+              gist_id: process.env.GIST_ID,
+              files: {
+                'previous_node_lts_alpine.txt': {
+                  content: `${{ needs.check-node-release.outputs.latest_tag }}`
+                }
+              }
+            });
+
+  slack-notify:
+    name: Send Slack Notification
+    needs: [check-node-release, pull-and-push]
+    if: needs.check-node-release.outputs.notify == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Notify new version pushed
+        if: needs.check-node-release.outputs.push == 'true'
+        uses: slackapi/slack-github-action@v2
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ secrets.SLACK_CHANNEL_ID }}
+            text: |
+              :tada: *Node.js* `${{ needs.check-node-release.outputs.latest_tag }}` image has been pushed to AWS ECR and GCP Artifact Registry.
+
+      - name: Notify no new version (manual)
+        if: needs.check-node-release.outputs.is_manual == 'true' && needs.check-node-release.outputs.push == 'false'
+        uses: slackapi/slack-github-action@v2
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ secrets.SLACK_CHANNEL_ID }}
+            text: |
+              :information_source: No new Node.js LTS Alpine image found. Current version: `${{ needs.check-node-release.outputs.prev_tag }}`.
