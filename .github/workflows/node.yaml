@@ -92,11 +92,23 @@ jobs:
           docker tag node:${{ needs.check-node-release.outputs.latest_tag }} ${{ steps.login-ecr.outputs.registry }}/node:${{ needs.check-node-release.outputs.latest_tag }}
           docker push ${{ steps.login-ecr.outputs.registry }}/node:${{ needs.check-node-release.outputs.latest_tag }}
 
-      - name: Authenticate to Google Cloud
+      # - name: Authenticate to Google Cloud
+      #   uses: google-github-actions/auth@v2
+      #   with:
+      #     workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      #     service_account: github-oidc-sa@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+
+      - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: github-oidc-sa@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+          credentials_json: ${{ secrets.GCP_CREDENTIALS }}          
+
+      - name: List GCS Buckets (Verify Auth)
+        run: |
+          echo '${{ secrets.GCP_CREDENTIALS }}' > /tmp/gcp-key.json
+          gcloud auth activate-service-account --key-file=/tmp/gcp-key.json
+          gcloud auth list
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$GOOGLE_APPLICATION_CREDENTIALS"
 
       - name: Configure Docker for GCP
         run: |
