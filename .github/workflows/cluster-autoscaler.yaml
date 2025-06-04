@@ -1,0 +1,92 @@
+name: Monitor Cluster Autoscaler Version
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GIST_FILENAME: previous_autoscaler_tag.txt
+
+jobs:
+  check-autoscaler:
+    name: Check Cluster Autoscaler Version
+    runs-on: ubuntu-latest
+    environment: autoscaler-monitoring
+
+    outputs:
+      latest: ${{ steps.get_latest.outputs.latest }}
+      previous: ${{ steps.get_previous.outputs.previous }}
+      notify: ${{ steps.decide.outputs.notify }}
+
+    steps:
+      - name: Get latest release tag from GitHub
+        id: get_latest
+        run: |
+          latest=$(curl -s https://api.github.com/repos/kubernetes/autoscaler/releases/latest | jq -r '.tag_name')
+          echo "latest=$latest" >> $GITHUB_OUTPUT
+
+      - name: Read previous tag from Gist
+        id: get_previous
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.CLUSTER_AUTOSCALER_GIST_TOKEN }}
+          script: |
+            const gist = await github.rest.gists.get({ gist_id: process.env.CLUSTER_AUTOSCALER_GIST_ID });
+            const tag = gist.data.files[process.env.GIST_FILENAME].content.trim();
+            core.setOutput('previous', tag);
+
+      - name: Decide if notification needed
+        id: decide
+        run: |
+          if [[ "${{ steps.get_latest.outputs.latest }}" != "${{ steps.get_previous.outputs.previous }}" ]]; then
+            echo "notify=true" >> $GITHUB_OUTPUT
+          else
+            echo "notify=false" >> $GITHUB_OUTPUT
+          fi
+
+  notify-slack:
+    name: Notify Slack
+    needs: check-autoscaler
+    if: needs.check-autoscaler.outputs.notify == 'true'
+    runs-on: ubuntu-latest
+    environment: autoscaler-monitoring
+
+    steps:
+      - name: Send Slack Message
+        uses: slackapi/slack-github-action@v2
+        with:
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          method: chat.postMessage
+          payload: |
+            channel: ${{ secrets.SLACK_CHANNEL_ID }}
+            text: |
+              :tada: *New Cluster Autoscaler Release Detected!*
+              A new version `${{ needs.check-autoscaler.outputs.latest }}` is available.
+              Please check: https://github.com/kubernetes/autoscaler/releases/tag/${{ needs.check-autoscaler.outputs.latest }}
+
+  update-gist:
+    name: Update Gist
+    needs: check-autoscaler
+    if: needs.check-autoscaler.outputs.notify == 'true'
+    runs-on: ubuntu-latest
+    environment: autoscaler-monitoring
+
+    steps:
+      - name: Update tag in Gist
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.CLUSTER_AUTOSCALER_GIST_TOKEN }}
+          script: |
+            await github.rest.gists.update({
+              gist_id: process.env.CLUSTER_AUTOSCALER_GIST_ID,
+              files: {
+                [process.env.GIST_FILENAME]: {
+                  content: `${{ needs.check-autoscaler.outputs.latest }}`
+                }
+              }
+            });
