@@ -35,10 +35,11 @@ jobs:
         run: |
           latest_tag=$(curl -s https://api.github.com/repos/kubernetes/autoscaler/releases | \
             jq -r '.[].tag_name' | \
-            grep '^cluster-autoscaler-' | \
+            grep -E '^cluster-autoscaler-[0-9]+\.[0-9]+\.[0-9]+$' | \
             sort -V | \
             tail -n1)
           echo "latest=$latest_tag" >> $GITHUB_OUTPUT
+
 
       # - name: Read previous tag from Gist
       #   id: get_previous
