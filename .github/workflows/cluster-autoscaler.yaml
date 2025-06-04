@@ -30,15 +30,28 @@ jobs:
           latest=$(curl -s https://api.github.com/repos/kubernetes/autoscaler/releases/latest | jq -r '.tag_name')
           echo "latest=$latest" >> $GITHUB_OUTPUT
 
+      # - name: Read previous tag from Gist
+      #   id: get_previous
+      #   uses: actions/github-script@v7
+      #   with:
+      #     github-token: ${{ secrets.CLUSTER_AUTOSCALER_GIST_TOKEN }}
+      #     script: |
+      #       const gist = await github.rest.gists.get({ gist_id: process.env.CLUSTER_AUTOSCALER_GIST_ID });
+      #       const tag = gist.data.files[process.env.GIST_FILENAME].content.trim();
+      #       core.setOutput('previous', tag);
+
       - name: Read previous tag from Gist
         id: get_previous
         uses: actions/github-script@v7
+        env:
+          GIST_ID: ${{ secrets.CLUSTER_AUTOSCALER_GIST_ID }}
         with:
           github-token: ${{ secrets.CLUSTER_AUTOSCALER_GIST_TOKEN }}
           script: |
-            const gist = await github.rest.gists.get({ gist_id: process.env.CLUSTER_AUTOSCALER_GIST_ID });
-            const tag = gist.data.files[process.env.GIST_FILENAME].content.trim();
+            const gist = await github.rest.gists.get({ gist_id: process.env.GIST_ID });
+            const tag = gist.data.files['previous_autoscaler_tag.txt'].content.trim();
             core.setOutput('previous', tag);
+
 
       - name: Decide if notification needed
         id: decide
