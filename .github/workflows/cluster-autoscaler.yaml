@@ -24,11 +24,21 @@ jobs:
       notify: ${{ steps.decide.outputs.notify }}
 
     steps:
-      - name: Get latest release tag from GitHub
+      # - name: Get latest release tag from GitHub
+      #   id: get_latest
+      #   run: |
+      #     latest=$(curl -s https://api.github.com/repos/kubernetes/autoscaler/releases/latest | jq -r '.tag_name')
+      #     echo "latest=$latest" >> $GITHUB_OUTPUT
+
+      - name: Get latest cluster-autoscaler tag
         id: get_latest
         run: |
-          latest=$(curl -s https://api.github.com/repos/kubernetes/autoscaler/releases/latest | jq -r '.tag_name')
-          echo "latest=$latest" >> $GITHUB_OUTPUT
+          latest_tag=$(curl -s https://api.github.com/repos/kubernetes/autoscaler/releases | \
+            jq -r '.[].tag_name' | \
+            grep '^cluster-autoscaler-' | \
+            sort -V | \
+            tail -n1)
+          echo "tag=$latest_tag" >> $GITHUB_OUTPUT
 
       # - name: Read previous tag from Gist
       #   id: get_previous
