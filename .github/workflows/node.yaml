@@ -25,7 +25,7 @@ jobs:
       - name: Get latest node:lts-alpine tag
         id: get_latest
         run: |
-          latest_tag=$(curl -s https://registry.hub.docker.com/v2/repositories/library/node/tags?page_size=100 | jq -r '.results[] | select(.name | startswith("lts-alpine")) | .name' | sort -V | tail -n1)
+          latest_tag=$(curl -s https://registry.hub.docker.com/v2/repositories/library/node/tags?page_size=100 | jq -r '.results[] | select(.name | startswith("alpine")) | .name' | sort -V | tail -n1)
           echo "Latest tag found: $latest_tag"
           echo "tag=$latest_tag" >> $GITHUB_OUTPUT
 
