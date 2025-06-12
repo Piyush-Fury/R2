@@ -39,6 +39,7 @@ jobs:
           script: |
             const gist = await github.rest.gists.get({ gist_id: process.env.GIST_ID });
             const prev = gist.data.files['previous_node_lts_alpine.txt'].content.trim();
+            console.log(`Previous tag found: ${prev}`);
             core.setOutput('prev', prev);
 
       - name: Decide what to do
