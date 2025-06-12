@@ -1,4 +1,4 @@
-name: Node LTS Alpine Image Sync
+name: Node Alpine Image Sync
 
 on:
   schedule:
